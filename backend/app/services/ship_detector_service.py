@@ -13,6 +13,13 @@ CONFIDENCE_THRESHOLD = 0.96
 IOU_THRESHOLD = 0.15
 MAX_IMAGE_DIM = 3000
 
+# Buildings in dense urban areas produce many tightly-packed false-positive
+# "ships" (the classifier was never trained to explicitly reject buildings —
+# see mine_hard_negatives.py). Real ships in open water are rarely this
+# densely clustered, so treat a dense cluster as land/urban and drop it.
+CLUSTER_RADIUS = 200
+CLUSTER_SUPPRESS_THRESHOLD = 5
+
 
 class ShipCNN(nn.Module):
     def __init__(self):
@@ -75,6 +82,21 @@ def _nms(boxes, scores, iou_threshold):
     return keep
 
 
+def _suppress_dense_clusters(boxes, radius, min_neighbors):
+    """Drop detections sitting in an unusually dense cluster (likely urban
+    buildings, not ships)."""
+    if not boxes:
+        return []
+    centers = np.array([[(b[0] + b[2]) / 2, (b[1] + b[3]) / 2] for b in boxes])
+    keep = []
+    for i in range(len(centers)):
+        dists = np.linalg.norm(centers - centers[i], axis=1)
+        neighbors = np.sum((dists > 0) & (dists <= radius))
+        if neighbors < min_neighbors:
+            keep.append(i)
+    return keep
+
+
 def detect_ships(image_path):
     model = _load_model()
     image = Image.open(image_path).convert("RGB")
@@ -119,6 +141,9 @@ def detect_ships(image_path):
             raw_scores.append(float(p))
 
     keep = _nms(raw_boxes, raw_scores, IOU_THRESHOLD)
+    kept_boxes = [raw_boxes[i] for i in keep]
+    survivors = _suppress_dense_clusters(kept_boxes, CLUSTER_RADIUS, CLUSTER_SUPPRESS_THRESHOLD)
+    keep = [keep[i] for i in survivors]
 
     objects = []
     for i in keep:
