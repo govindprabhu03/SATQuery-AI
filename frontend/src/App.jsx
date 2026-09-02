@@ -125,6 +125,135 @@ function ChangeOverlay({ imageUrl, regions, changedPct, count }) {
   )
 }
 
+const TASK_LABELS = {
+  caption: { name: 'Caption', color: 'text-sky-300 bg-sky-500/10 border-sky-400/30' },
+  vqa: { name: 'Visual Q&A', color: 'text-emerald-300 bg-emerald-500/10 border-emerald-400/30' },
+  grounding: { name: 'Object Detection', color: 'text-amber-300 bg-amber-500/10 border-amber-400/30' },
+  change_detection: { name: 'Change Detection', color: 'text-rose-300 bg-rose-500/10 border-rose-400/30' },
+}
+
+function downloadBlob(content, filename, mime) {
+  const blob = new Blob([content], { type: mime })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  URL.revokeObjectURL(url)
+}
+
+function exportResultsJSON(results, imageName) {
+  const payload = {
+    image: imageName,
+    exported_at: new Date().toISOString(),
+    results: results.map((r) => ({
+      task_type: r.task_type || 'unknown',
+      question: r.question || null,
+      answer: r.text,
+      count: r.count ?? null,
+      objects: r.objects || [],
+      timestamp: r.timestamp || null,
+    })),
+  }
+  downloadBlob(JSON.stringify(payload, null, 2), 'satquery-results.json', 'application/json')
+}
+
+function exportResultsCSV(results) {
+  const header = ['task_type', 'question', 'answer', 'count', 'objects', 'timestamp']
+  const rows = results.map((r) => [
+    r.task_type || '',
+    (r.question || '').replace(/"/g, '""'),
+    (r.text || '').replace(/"/g, '""'),
+    r.count ?? '',
+    (r.objects || []).map((o) => o.label).join('; '),
+    r.timestamp || '',
+  ])
+  const csv = [header, ...rows]
+    .map((row) => row.map((cell) => `"${cell}"`).join(','))
+    .join('\n')
+  downloadBlob(csv, 'satquery-results.csv', 'text/csv')
+}
+
+function ResultsSection({ results, imageName }) {
+  if (results.length === 0) return null
+
+  return (
+    <div className="rounded-2xl border border-white/10 bg-white/[0.03] backdrop-blur-md">
+      <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
+        <div>
+          <h3 className="text-sm font-medium text-slate-100">Analysis Results</h3>
+          <p className="text-xs text-slate-500" style={mono}>
+            {results.length} result{results.length === 1 ? '' : 's'} · {imageName}
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <button
+            onClick={() => exportResultsJSON(results, imageName)}
+            className="rounded-full border border-white/10 px-3 py-1.5 text-xs text-slate-300 transition hover:bg-white/5"
+          >
+            Export JSON
+          </button>
+          <button
+            onClick={() => exportResultsCSV(results)}
+            className="rounded-full border border-white/10 px-3 py-1.5 text-xs text-slate-300 transition hover:bg-white/5"
+          >
+            Export CSV
+          </button>
+        </div>
+      </div>
+
+      <div className="flex max-h-72 flex-col gap-3 overflow-y-auto p-4">
+        {results.map((r, i) => {
+          const meta = TASK_LABELS[r.task_type] || {
+            name: r.task_type || 'Result',
+            color: 'text-slate-300 bg-white/5 border-white/20',
+          }
+          return (
+            <div
+              key={i}
+              className="rounded-xl border border-white/10 bg-black/20 p-3"
+            >
+              <div className="mb-1.5 flex items-center justify-between gap-2">
+                <span
+                  className={`rounded-full border px-2 py-0.5 text-[10px] font-medium tracking-wide ${meta.color}`}
+                  style={mono}
+                >
+                  {meta.name.toUpperCase()}
+                </span>
+                {r.timestamp && (
+                  <span className="text-[10px] text-slate-500" style={mono}>
+                    {new Date(r.timestamp).toLocaleTimeString()}
+                  </span>
+                )}
+              </div>
+              {r.question && (
+                <p className="mb-1 text-xs text-slate-400">"{r.question}"</p>
+              )}
+              <p className="text-sm text-slate-100">{r.text}</p>
+              {r.objects && r.objects.length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {r.objects.map((o, j) => (
+                    <span
+                      key={j}
+                      className="rounded border border-white/10 bg-white/5 px-1.5 py-0.5 text-[10px] text-slate-400"
+                      style={mono}
+                    >
+                      {o.label}
+                      {o.confidence != null ? ` ${Math.round(o.confidence * 100)}%` : ''}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 function Hud({ text }) {
   return (
     <div
@@ -235,7 +364,17 @@ export default function App() {
     if (!res.ok) throw new Error('Compare failed')
     const data = await res.json()
     setCompareResult(data)
-    setQueryLog((log) => [...log, { role: 'ai', text: data.answer }])
+    setQueryLog((log) => [
+      ...log,
+      {
+        role: 'ai',
+        text: data.answer,
+        task_type: data.task_type,
+        objects: data.objects,
+        count: data.count,
+        timestamp: new Date().toISOString(),
+      },
+    ])
     return data
   }
 
@@ -271,7 +410,18 @@ export default function App() {
       })
       if (!res.ok) throw new Error('offline')
       const data = await res.json()
-      setQueryLog((log) => [...log, { role: 'ai', text: data.answer }])
+      setQueryLog((log) => [
+        ...log,
+        {
+          role: 'ai',
+          text: data.answer,
+          question: q,
+          task_type: data.task_type,
+          objects: data.objects,
+          count: data.count,
+          timestamp: new Date().toISOString(),
+        },
+      ])
       if (data.task_type === 'grounding') {
         setDetection({
           objects: data.objects,
@@ -569,6 +719,11 @@ export default function App() {
                       />
                     </div>
                   )}
+
+                  <ResultsSection
+                    results={queryLog.filter((e) => e.role === 'ai')}
+                    imageName={file?.name || uploadResult?.filename || 'image'}
+                  />
 
                   <div className="flex h-52 flex-col gap-2 overflow-y-auto rounded-xl border border-white/10 bg-black/30 p-3 backdrop-blur-md">
                     {queryLog.length === 0 && (
