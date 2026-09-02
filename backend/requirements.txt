@@ -6,3 +6,6 @@ python-multipart
 torch
 transformers
 pillow
+sqlalchemy
+psycopg2-binary
+python-dotenv
