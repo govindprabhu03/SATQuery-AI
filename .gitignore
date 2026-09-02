@@ -1,0 +1,29 @@
+# Python
+venv/
+__pycache__/
+*.pyc
+*.egg-info/
+
+# Node
+node_modules/
+dist/
+.vite/
+
+# Large data & model artifacts (not committed — see docs/DATASET_RESEARCH.md
+# for download sources, and colab/ for the training notebook that regenerates
+# these from scratch)
+datasets/
+models/
+uploads/*
+!uploads/.gitkeep
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
