@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app.models_db import Image, Query as QueryRow
 from app.services.caption_service import generate_caption
+from app.services.gemini_service import answer_with_gemini
 from app.services.grounding_service import detect_objects, extract_target_label
 from app.services.ship_detector_service import detect_ships
 from app.services.vqa_service import answer_question
@@ -78,8 +79,12 @@ def query(req: QueryRequest, db: Session = Depends(get_db)):
             "count": count,
         }
     else:
+        try:
+            answer = answer_with_gemini(image_path, req.question)
+        except Exception:
+            answer = answer_question(image_path, req.question)
         result = {
-            "answer": answer_question(image_path, req.question),
+            "answer": answer,
             "task_type": "vqa",
             "objects": [],
             "count": None,
