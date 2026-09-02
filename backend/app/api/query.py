@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app.models_db import Image, Query as QueryRow
 from app.services.caption_service import generate_caption
-from app.services.gemini_service import answer_with_gemini
+from app.services.gemini_service import answer_with_gemini, suggest_questions
 from app.services.grounding_service import detect_objects, extract_target_label
 from app.services.ship_detector_service import detect_ships
 from app.services.vqa_service import answer_question
@@ -50,6 +50,8 @@ def query(req: QueryRequest, db: Session = Depends(get_db)):
     image_path, image = _find_image(req.image_id, db)
     question_lower = req.question.strip().lower()
 
+    is_ship_query = any(word in question_lower for word in SHIP_WORDS)
+
     if any(trigger in question_lower for trigger in CAPTION_TRIGGERS):
         result = {
             "answer": generate_caption(image_path),
@@ -57,8 +59,7 @@ def query(req: QueryRequest, db: Session = Depends(get_db)):
             "objects": [],
             "count": None,
         }
-    elif any(trigger in question_lower for trigger in GROUNDING_TRIGGERS):
-        is_ship_query = any(word in question_lower for word in SHIP_WORDS)
+    elif is_ship_query or any(trigger in question_lower for trigger in GROUNDING_TRIGGERS):
         if is_ship_query:
             label = "ship"
             objects = detect_ships(image_path)
@@ -103,6 +104,12 @@ def query(req: QueryRequest, db: Session = Depends(get_db)):
     db.commit()
 
     return result
+
+
+@router.get("/images/{image_id}/suggestions")
+def image_suggestions(image_id: str, db: Session = Depends(get_db)):
+    image_path, _ = _find_image(image_id, db)
+    return {"suggestions": suggest_questions(image_path)}
 
 
 @router.get("/images/{image_id}/history")

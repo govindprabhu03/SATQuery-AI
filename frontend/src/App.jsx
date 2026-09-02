@@ -5,6 +5,8 @@ import SatelliteGlobe from './components/SatelliteGlobe'
 import FilmOverlay from './components/FilmOverlay'
 import Nav from './components/Nav'
 import VoiceInput from './components/VoiceInput'
+import RegionExplorer from './components/RegionExplorer'
+import EarthquakeRisk from './components/EarthquakeRisk'
 
 const serif = { fontFamily: "'Fraunces', serif" }
 const mono = { fontFamily: "'JetBrains Mono', monospace" }
@@ -321,6 +323,10 @@ function DashboardView({
   handleAsk,
   reset,
   fileName,
+  chatEndRef,
+  asking,
+  suggestions,
+  loadingSuggestions,
 }) {
   const aiResults = queryLog.filter((e) => e.role === 'ai')
   const taskCounts = aiResults.reduce((acc, r) => {
@@ -379,6 +385,21 @@ function DashboardView({
         transition={{ delay: 0.1, duration: 0.5 }}
         className="order-1 flex flex-col gap-4 lg:order-2"
       >
+        <div className="flex items-center justify-between">
+          <p className="text-xs text-slate-500" style={mono}>
+            ANALYZING · {fileName}
+          </p>
+          <button
+            onClick={reset}
+            className="flex items-center gap-1.5 rounded-full border border-sky-400/30 bg-sky-500/10 px-3.5 py-1.5 text-xs font-medium text-sky-300 transition hover:bg-sky-500/20"
+          >
+            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 8.25L12 3.75m0 0L7.5 8.25M12 3.75v12" />
+            </svg>
+            Upload new image
+          </button>
+        </div>
+
         <DashCard>
           <div className="relative">
             {detection ? (
@@ -410,17 +431,82 @@ function DashboardView({
               value={question}
               onChange={(e) => setQuestion(e.target.value)}
               placeholder="Tell me what you want to know…"
-              className="flex-1 bg-transparent text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none"
+              disabled={asking}
+              className="flex-1 bg-transparent text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none disabled:opacity-50"
             />
-            <VoiceInput onResult={(text) => setQuestion(text)} />
+            <VoiceInput onResult={(text) => setQuestion(text)} disabled={asking} />
             <button
               type="submit"
-              className="rounded-full bg-gradient-to-r from-sky-500 to-amber-400 px-4 py-2 text-xs font-medium text-slate-950 shadow-lg shadow-sky-500/20 transition hover:brightness-110"
+              disabled={asking}
+              className="flex items-center gap-1.5 rounded-full bg-gradient-to-r from-sky-500 to-amber-400 px-4 py-2 text-xs font-medium text-slate-950 shadow-lg shadow-sky-500/20 transition hover:brightness-110 disabled:opacity-60"
             >
-              Ask
+              {asking && (
+                <span className="h-3 w-3 animate-spin rounded-full border-2 border-slate-950/30 border-t-slate-950" />
+              )}
+              {asking ? 'Thinking…' : 'Ask'}
             </button>
           </div>
         </form>
+
+        {(loadingSuggestions || suggestions.length > 0) && (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-[10px] tracking-wide text-slate-500" style={mono}>
+              {loadingSuggestions ? 'THINKING OF QUESTIONS…' : 'TRY ASKING'}
+            </span>
+            {loadingSuggestions
+              ? [0, 1, 2].map((i) => (
+                  <span key={i} className="h-6 w-24 animate-pulse rounded-full bg-white/5" />
+                ))
+              : suggestions.map((s, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    disabled={asking}
+                    onClick={(e) => handleAsk(e, s)}
+                    className="rounded-full border border-sky-400/20 bg-sky-500/5 px-3 py-1 text-xs text-sky-200 transition hover:border-sky-400/50 hover:bg-sky-500/15 disabled:opacity-50"
+                  >
+                    {s}
+                  </button>
+                ))}
+          </div>
+        )}
+
+        <div className="flex h-64 flex-col gap-2 overflow-y-auto rounded-2xl border border-white/10 bg-black/30 p-3 backdrop-blur-md">
+          {queryLog.length === 0 && (
+            <p className="m-auto max-w-xs text-center text-xs text-slate-500">
+              Ask something like "Describe this image" or "How many ships are there?"
+            </p>
+          )}
+          {queryLog.map((entry, i) => (
+            <motion.div
+              key={i}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              className={`max-w-[85%] rounded-lg px-3 py-2 text-sm ${
+                entry.role === 'user' ? 'ml-auto bg-sky-500/20 text-sky-100' : 'bg-white/5 text-slate-200'
+              }`}
+            >
+              {entry.text}
+            </motion.div>
+          ))}
+          {asking && (
+            <motion.div
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="flex max-w-[85%] items-center gap-1.5 rounded-lg bg-white/5 px-3 py-2.5"
+            >
+              {[0, 1, 2].map((i) => (
+                <motion.span
+                  key={i}
+                  className="h-1.5 w-1.5 rounded-full bg-sky-300"
+                  animate={{ opacity: [0.3, 1, 0.3] }}
+                  transition={{ duration: 1, repeat: Infinity, delay: i * 0.15 }}
+                />
+              ))}
+            </motion.div>
+          )}
+          <div ref={chatEndRef} />
+        </div>
 
         {!secondUploadResult && (
           <div>
@@ -512,26 +598,6 @@ function DashboardView({
       <div className="col-span-1 lg:col-span-3">
         <ResultsSection results={aiResults} imageName={fileName} />
       </div>
-
-      <div className="col-span-1 flex h-40 flex-col gap-2 overflow-y-auto rounded-2xl border border-white/10 bg-black/30 p-3 backdrop-blur-md lg:col-span-3">
-        {queryLog.length === 0 && (
-          <p className="m-auto max-w-xs text-center text-xs text-slate-500">
-            Ask something like "Describe this image" or "How many ships are there?"
-          </p>
-        )}
-        {queryLog.map((entry, i) => (
-          <motion.div
-            key={i}
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            className={`max-w-[85%] rounded-lg px-3 py-2 text-sm ${
-              entry.role === 'user' ? 'ml-auto bg-sky-500/20 text-sky-100' : 'bg-white/5 text-slate-200'
-            }`}
-          >
-            {entry.text}
-          </motion.div>
-        ))}
-      </div>
     </div>
   )
 }
@@ -551,6 +617,7 @@ function Hud({ text }) {
 export default function App() {
   const [status, setStatus] = useState('checking...')
   const [step, setStep] = useState('upload')
+  const [consoleMode, setConsoleMode] = useState('upload') // 'upload' | 'region' | 'earthquake'
   const [file, setFile] = useState(null)
   const [previewUrl, setPreviewUrl] = useState(null)
   const [dragActive, setDragActive] = useState(false)
@@ -564,9 +631,13 @@ export default function App() {
   const [secondUploadResult, setSecondUploadResult] = useState(null)
   const [comparing, setComparing] = useState(false)
   const [compareResult, setCompareResult] = useState(null)
+  const [asking, setAsking] = useState(false)
+  const [suggestions, setSuggestions] = useState([])
+  const [loadingSuggestions, setLoadingSuggestions] = useState(false)
   const inputRef = useRef(null)
   const secondInputRef = useRef(null)
   const consoleRef = useRef(null)
+  const chatEndRef = useRef(null)
 
   useEffect(() => {
     fetch('/api/health')
@@ -574,6 +645,10 @@ export default function App() {
       .then((data) => setStatus(data.status))
       .catch(() => setStatus('unreachable'))
   }, [])
+
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+  }, [queryLog, asking])
 
   function scrollToConsole() {
     consoleRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -593,6 +668,19 @@ export default function App() {
     pickFile(e.dataTransfer.files?.[0])
   }
 
+  async function fetchSuggestions(imageId) {
+    setLoadingSuggestions(true)
+    try {
+      const res = await fetch(`/api/images/${imageId}/suggestions`)
+      const data = await res.json()
+      setSuggestions(data.suggestions || [])
+    } catch {
+      setSuggestions([])
+    } finally {
+      setLoadingSuggestions(false)
+    }
+  }
+
   async function handleUpload() {
     if (!file) return
     setUploading(true)
@@ -608,6 +696,7 @@ export default function App() {
       const data = await res.json()
       setUploadResult(data)
       setStep('result')
+      fetchSuggestions(data.image_id)
     } catch (e) {
       setError(e.message)
     } finally {
@@ -660,19 +749,22 @@ export default function App() {
     return data
   }
 
-  async function handleAsk(e) {
+  async function handleAsk(e, textOverride) {
     e.preventDefault()
-    const q = question.trim()
-    if (!q || !uploadResult) return
+    const q = (textOverride ?? question).trim()
+    if (!q || !uploadResult || asking) return
     setQueryLog((log) => [...log, { role: 'user', text: q }])
     setQuestion('')
 
     const isChangeQuestion = CHANGE_WORDS.some((w) => q.toLowerCase().includes(w))
     if (isChangeQuestion && secondUploadResult) {
+      setAsking(true)
       try {
         await runCompare(secondUploadResult.image_id)
       } catch {
         setQueryLog((log) => [...log, { role: 'ai', text: 'Comparison failed — try again.' }])
+      } finally {
+        setAsking(false)
       }
       return
     }
@@ -684,6 +776,7 @@ export default function App() {
       return
     }
 
+    setAsking(true)
     try {
       const res = await fetch('/api/query', {
         method: 'POST',
@@ -714,8 +807,10 @@ export default function App() {
     } catch {
       setQueryLog((log) => [
         ...log,
-        { role: 'ai', text: 'Query engine comes online in Phase 3 — stand by.' },
+        { role: 'ai', text: "Couldn't reach the backend — check it's running and try again." },
       ])
+    } finally {
+      setAsking(false)
     }
   }
 
@@ -729,6 +824,7 @@ export default function App() {
     setSecondUploadResult(null)
     setCompareResult(null)
     setError(null)
+    setSuggestions([])
     setStep('upload')
   }
 
@@ -827,7 +923,41 @@ export default function App() {
           </AnimatePresence>
         </div>
 
-        <div className={`w-full transition-[max-width] duration-500 ${step === 'result' ? 'max-w-6xl' : 'max-w-xl'}`} style={{ perspective: 1400 }}>
+        <div className={`w-full transition-[max-width] duration-500 ${step === 'result' || consoleMode !== 'upload' ? 'max-w-6xl' : 'max-w-xl'}`} style={{ perspective: 1400 }}>
+          <div className="mb-8 flex justify-center">
+            <div className="inline-flex rounded-full border border-white/10 bg-white/[0.03] p-1 backdrop-blur-md">
+              <button
+                onClick={() => setConsoleMode('upload')}
+                className={`rounded-full px-4 py-1.5 text-xs font-medium transition ${
+                  consoleMode === 'upload' ? 'bg-gradient-to-r from-sky-500 to-amber-400 text-slate-950' : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                Upload &amp; Ask
+              </button>
+              <button
+                onClick={() => setConsoleMode('region')}
+                className={`rounded-full px-4 py-1.5 text-xs font-medium transition ${
+                  consoleMode === 'region' ? 'bg-gradient-to-r from-sky-500 to-amber-400 text-slate-950' : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                Explore a Region
+              </button>
+              <button
+                onClick={() => setConsoleMode('earthquake')}
+                className={`rounded-full px-4 py-1.5 text-xs font-medium transition ${
+                  consoleMode === 'earthquake' ? 'bg-gradient-to-r from-sky-500 to-amber-400 text-slate-950' : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                Earthquake Risk
+              </button>
+            </div>
+          </div>
+
+          {consoleMode === 'region' ? (
+            <RegionExplorer />
+          ) : consoleMode === 'earthquake' ? (
+            <EarthquakeRisk />
+          ) : (
           <AnimatePresence mode="wait">
             <motion.div
               key={step}
@@ -950,10 +1080,15 @@ export default function App() {
                   handleAsk={handleAsk}
                   reset={reset}
                   fileName={file?.name || uploadResult?.filename || 'image'}
+                  chatEndRef={chatEndRef}
+                  asking={asking}
+                  suggestions={suggestions}
+                  loadingSuggestions={loadingSuggestions}
                 />
               )}
             </motion.div>
           </AnimatePresence>
+          )}
         </div>
       </section>
       </div>

@@ -10,3 +10,9 @@ sqlalchemy
 psycopg2-binary
 python-dotenv
 requests
+numpy
+pystac-client
+planetary-computer
+rasterio
+rioxarray
+odc-stac

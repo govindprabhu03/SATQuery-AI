@@ -50,3 +50,41 @@ class Comparison(Base):
     changed_area_percent: Mapped[float] = mapped_column(Float)
     regions: Mapped[list | None] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class RegionAnalysis(Base):
+    __tablename__ = "region_analyses"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    place_name: Mapped[str] = mapped_column(String(255))
+    latitude: Mapped[float] = mapped_column(Float)
+    longitude: Mapped[float] = mapped_column(Float)
+    period_before: Mapped[str] = mapped_column(String(32))
+    period_after: Mapped[str] = mapped_column(String(32))
+    vegetated_pct_before: Mapped[float] = mapped_column(Float)
+    vegetated_pct_after: Mapped[float] = mapped_column(Float)
+    mean_ndvi_change: Mapped[float] = mapped_column(Float)
+    scenes_used_before: Mapped[int] = mapped_column(Integer)
+    scenes_used_after: Mapped[int] = mapped_column(Integer)
+    narrative: Mapped[str] = mapped_column(Text)
+    before_image_path: Mapped[str] = mapped_column(String(255))
+    after_image_path: Mapped[str] = mapped_column(String(255))
+    diff_image_path: Mapped[str] = mapped_column(String(255))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class EarthquakeAnalysis(Base):
+    __tablename__ = "earthquake_analyses"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    place: Mapped[str] = mapped_column(String(255))
+    latitude: Mapped[float] = mapped_column(Float)
+    longitude: Mapped[float] = mapped_column(Float)
+    years: Mapped[int] = mapped_column(Integer)
+    radius_km: Mapped[int] = mapped_column(Integer)
+    score: Mapped[int] = mapped_column(Integer)
+    level: Mapped[str] = mapped_column(String(16))
+    fault_name: Mapped[str] = mapped_column(String(255))
+    fault_distance_km: Mapped[float] = mapped_column(Float)
+    quake_count: Mapped[int] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
