@@ -9,7 +9,7 @@ from PIL import Image
 MODEL_PATH = Path(__file__).resolve().parents[3] / "models" / "ship_classifier.pt"
 CHIP_SIZE = 80
 STRIDE = 10
-CONFIDENCE_THRESHOLD = 0.9
+CONFIDENCE_THRESHOLD = 0.96
 IOU_THRESHOLD = 0.15
 MAX_IMAGE_DIM = 3000
 
