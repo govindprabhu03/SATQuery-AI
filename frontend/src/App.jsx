@@ -4,6 +4,7 @@ import SpaceBackground from './components/SpaceBackground'
 import SatelliteGlobe from './components/SatelliteGlobe'
 import FilmOverlay from './components/FilmOverlay'
 import Nav from './components/Nav'
+import VoiceInput from './components/VoiceInput'
 
 const serif = { fontFamily: "'Fraunces', serif" }
 const mono = { fontFamily: "'JetBrains Mono', monospace" }
@@ -249,6 +250,287 @@ function ResultsSection({ results, imageName }) {
             </div>
           )
         })}
+      </div>
+    </div>
+  )
+}
+
+function DashCard({ title, action, className = '', children }) {
+  return (
+    <div className={`rounded-2xl border border-white/10 bg-white/[0.03] backdrop-blur-xl ${className}`}>
+      {title && (
+        <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
+          <h3 className="text-sm font-medium text-slate-100">{title}</h3>
+          {action}
+        </div>
+      )}
+      {children}
+    </div>
+  )
+}
+
+function InsightRow({ tone, label, sub }) {
+  const dot = { ok: 'bg-emerald-400', warn: 'bg-amber-400', info: 'bg-sky-400' }[tone] || 'bg-sky-400'
+  return (
+    <div className="flex items-start gap-2.5 rounded-xl border border-white/5 bg-black/20 p-2.5">
+      <span className={`mt-1 h-1.5 w-1.5 shrink-0 rounded-full ${dot}`} />
+      <div className="min-w-0">
+        <p className="truncate text-xs text-slate-200">{label}</p>
+        <p className="truncate text-[11px] text-slate-500" style={mono}>{sub}</p>
+      </div>
+    </div>
+  )
+}
+
+function RadarWidget() {
+  return (
+    <div className="relative flex h-28 w-28 items-center justify-center overflow-hidden rounded-full border border-sky-400/20 bg-black/40">
+      {[1, 2, 3].map((r) => (
+        <span
+          key={r}
+          className="absolute rounded-full border border-sky-400/15"
+          style={{ width: `${r * 30}%`, height: `${r * 30}%` }}
+        />
+      ))}
+      <motion.div
+        className="absolute h-full w-full"
+        style={{
+          background: 'conic-gradient(from 0deg, rgba(56,189,248,0.35), transparent 35%)',
+        }}
+        animate={{ rotate: 360 }}
+        transition={{ duration: 3, repeat: Infinity, ease: 'linear' }}
+      />
+      <span className="relative h-1.5 w-1.5 rounded-full bg-sky-300 shadow-[0_0_8px_2px_rgba(56,189,248,0.8)]" />
+    </div>
+  )
+}
+
+function DashboardView({
+  previewUrl,
+  uploadResult,
+  detection,
+  compareResult,
+  secondPreviewUrl,
+  secondUploadResult,
+  secondInputRef,
+  handleSecondUpload,
+  comparing,
+  queryLog,
+  question,
+  setQuestion,
+  handleAsk,
+  reset,
+  fileName,
+}) {
+  const aiResults = queryLog.filter((e) => e.role === 'ai')
+  const taskCounts = aiResults.reduce((acc, r) => {
+    const t = r.task_type || 'other'
+    acc[t] = (acc[t] || 0) + 1
+    return acc
+  }, {})
+  const maxTaskCount = Math.max(1, ...Object.values(taskCounts))
+
+  return (
+    <div style={{ transformStyle: 'preserve-3d' }} className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_1.4fr_1fr]">
+      {/* LEFT: Mission Insights */}
+      <motion.div
+        initial={{ opacity: 0, x: -20, rotateY: 10 }}
+        animate={{ opacity: 1, x: 0, rotateY: 0 }}
+        transition={{ delay: 0.05, duration: 0.5 }}
+        className="order-2 lg:order-1"
+      >
+        <DashCard title="Mission Insights" className="h-full">
+          <div className="flex flex-col gap-2 p-3">
+            {detection && (
+              <InsightRow
+                tone={detection.count > 0 ? 'ok' : 'warn'}
+                label={`${detection.count} ${detection.label}${detection.count === 1 ? '' : 's'} detected`}
+                sub="OBJECT DETECTION"
+              />
+            )}
+            {compareResult && (
+              <InsightRow
+                tone={compareResult.count > 0 ? 'warn' : 'ok'}
+                label={`${compareResult.changed_area_percent}% area changed`}
+                sub="CHANGE DETECTION"
+              />
+            )}
+            {aiResults.slice(-4).reverse().map((r, i) => (
+              <InsightRow
+                key={i}
+                tone="info"
+                label={r.text.length > 46 ? r.text.slice(0, 46) + '…' : r.text}
+                sub={(TASK_LABELS[r.task_type]?.name || r.task_type || 'RESULT').toUpperCase()}
+              />
+            ))}
+            {aiResults.length === 0 && !detection && !compareResult && (
+              <p className="p-2 text-center text-xs text-slate-500">
+                Ask a question to populate mission insights.
+              </p>
+            )}
+          </div>
+        </DashCard>
+      </motion.div>
+
+      {/* CENTER: image + floating voice search */}
+      <motion.div
+        initial={{ opacity: 0, y: 20, scale: 0.96 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        transition={{ delay: 0.1, duration: 0.5 }}
+        className="order-1 flex flex-col gap-4 lg:order-2"
+      >
+        <DashCard>
+          <div className="relative">
+            {detection ? (
+              <DetectionOverlay
+                imageUrl={previewUrl}
+                objects={detection.objects}
+                count={detection.count}
+                label={detection.label}
+              />
+            ) : compareResult && secondPreviewUrl ? (
+              <ChangeOverlay
+                imageUrl={secondPreviewUrl}
+                regions={compareResult.objects}
+                changedPct={compareResult.changed_area_percent}
+                count={compareResult.count}
+              />
+            ) : (
+              <img src={previewUrl} alt="uploaded" className="max-h-[420px] w-full rounded-2xl object-contain bg-black/40" />
+            )}
+          </div>
+        </DashCard>
+
+        <form onSubmit={handleAsk} className="relative">
+          <div className="flex items-center gap-2 rounded-full border border-white/10 bg-black/40 px-3 py-2 backdrop-blur-xl shadow-[0_0_30px_rgba(56,189,248,0.1)]">
+            <svg className="h-4 w-4 shrink-0 text-sky-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" />
+            </svg>
+            <input
+              value={question}
+              onChange={(e) => setQuestion(e.target.value)}
+              placeholder="Tell me what you want to know…"
+              className="flex-1 bg-transparent text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none"
+            />
+            <VoiceInput onResult={(text) => setQuestion(text)} />
+            <button
+              type="submit"
+              className="rounded-full bg-gradient-to-r from-sky-500 to-amber-400 px-4 py-2 text-xs font-medium text-slate-950 shadow-lg shadow-sky-500/20 transition hover:brightness-110"
+            >
+              Ask
+            </button>
+          </div>
+        </form>
+
+        {!secondUploadResult && (
+          <div>
+            <button
+              onClick={() => secondInputRef.current?.click()}
+              disabled={comparing}
+              className="w-full rounded-full border border-dashed border-white/15 px-4 py-2.5 text-xs text-slate-400 transition hover:border-rose-400/50 hover:text-rose-300 disabled:opacity-50"
+            >
+              {comparing ? 'Comparing…' : '+ Compare with another date'}
+            </button>
+            <input
+              ref={secondInputRef}
+              type="file"
+              accept="image/*,.tif,.tiff"
+              className="hidden"
+              onChange={(e) => handleSecondUpload(e.target.files?.[0])}
+            />
+          </div>
+        )}
+      </motion.div>
+
+      {/* RIGHT: image info + radar */}
+      <motion.div
+        initial={{ opacity: 0, x: 20, rotateY: -10 }}
+        animate={{ opacity: 1, x: 0, rotateY: 0 }}
+        transition={{ delay: 0.15, duration: 0.5 }}
+        className="order-3 flex flex-col gap-4"
+      >
+        <DashCard
+          title={`Code ${(uploadResult?.image_id || '').slice(0, 6).toUpperCase()}`}
+          action={
+            <button onClick={reset} className="rounded-full border border-white/10 px-2.5 py-1 text-[10px] text-slate-300 hover:bg-white/5">
+              New
+            </button>
+          }
+        >
+          <div className="grid grid-cols-2 gap-4 p-4 text-xs">
+            <div>
+              <p className="text-slate-500">File</p>
+              <p className="truncate text-slate-200" style={mono}>{fileName}</p>
+            </div>
+            <div>
+              <p className="text-slate-500">Status</p>
+              <p className="text-emerald-400">Analyzed</p>
+            </div>
+            <div>
+              <p className="text-slate-500">Queries</p>
+              <p className="text-slate-200" style={mono}>{aiResults.length}</p>
+            </div>
+            <div>
+              <p className="text-slate-500">Compare</p>
+              <p className="text-slate-200">{secondUploadResult ? 'Active' : 'None'}</p>
+            </div>
+          </div>
+          <div className="flex justify-center pb-4">
+            <RadarWidget />
+          </div>
+        </DashCard>
+
+        <DashCard title="Detections by Type" className="flex-1">
+          <div className="flex flex-col gap-2.5 p-4">
+            {Object.keys(taskCounts).length === 0 && (
+              <p className="text-xs text-slate-500">No results yet.</p>
+            )}
+            {Object.entries(taskCounts).map(([type, n]) => {
+              const meta = TASK_LABELS[type] || { name: type }
+              return (
+                <div key={type}>
+                  <div className="mb-1 flex justify-between text-[11px] text-slate-400">
+                    <span>{meta.name}</span>
+                    <span style={mono}>{n}</span>
+                  </div>
+                  <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/5">
+                    <motion.div
+                      className="h-full rounded-full bg-gradient-to-r from-sky-500 to-amber-400"
+                      initial={{ width: 0 }}
+                      animate={{ width: `${(n / maxTaskCount) * 100}%` }}
+                      transition={{ duration: 0.6, ease: 'easeOut' }}
+                    />
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </DashCard>
+      </motion.div>
+
+      {/* BOTTOM: full-width results/history */}
+      <div className="col-span-1 lg:col-span-3">
+        <ResultsSection results={aiResults} imageName={fileName} />
+      </div>
+
+      <div className="col-span-1 flex h-40 flex-col gap-2 overflow-y-auto rounded-2xl border border-white/10 bg-black/30 p-3 backdrop-blur-md lg:col-span-3">
+        {queryLog.length === 0 && (
+          <p className="m-auto max-w-xs text-center text-xs text-slate-500">
+            Ask something like "Describe this image" or "How many ships are there?"
+          </p>
+        )}
+        {queryLog.map((entry, i) => (
+          <motion.div
+            key={i}
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            className={`max-w-[85%] rounded-lg px-3 py-2 text-sm ${
+              entry.role === 'user' ? 'ml-auto bg-sky-500/20 text-sky-100' : 'bg-white/5 text-slate-200'
+            }`}
+          >
+            {entry.text}
+          </motion.div>
+        ))}
       </div>
     </div>
   )
@@ -545,22 +827,27 @@ export default function App() {
           </AnimatePresence>
         </div>
 
-        <div className="w-full max-w-xl">
+        <div className={`w-full transition-[max-width] duration-500 ${step === 'result' ? 'max-w-6xl' : 'max-w-xl'}`} style={{ perspective: 1400 }}>
           <AnimatePresence mode="wait">
             <motion.div
               key={step}
-              initial={{ opacity: 0, y: 24 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -24 }}
-              transition={{ duration: 0.45, ease: 'easeOut' }}
+              initial={{ opacity: 0, y: 24, rotateX: -8, scale: 0.97 }}
+              animate={{ opacity: 1, y: 0, rotateX: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -24, rotateX: 8, scale: 0.97 }}
+              transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
+              style={{ transformStyle: 'preserve-3d' }}
             >
-              <SceneLabel n={chapter.n} label={chapter.label} />
-              <h2
-                className="mb-8 text-3xl leading-tight text-white sm:text-4xl"
-                style={serif}
-              >
-                {chapter.title}
-              </h2>
+              {step !== 'result' && (
+                <>
+                  <SceneLabel n={chapter.n} label={chapter.label} />
+                  <h2
+                    className="mb-8 text-3xl leading-tight text-white sm:text-4xl"
+                    style={serif}
+                  >
+                    {chapter.title}
+                  </h2>
+                </>
+              )}
 
               {step === 'upload' && (
                 <div>
@@ -647,122 +934,23 @@ export default function App() {
               )}
 
               {step === 'result' && (
-                <div className="flex flex-col gap-4">
-                  <div className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/[0.03] p-3 backdrop-blur-md">
-                    <img
-                      src={previewUrl}
-                      alt="uploaded"
-                      className="h-14 w-14 rounded-lg border border-white/10 object-cover"
-                    />
-                    <div className="min-w-0">
-                      <p className="flex items-center gap-1.5 text-sm text-emerald-400">
-                        <svg
-                          className="h-4 w-4"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          stroke="currentColor"
-                          strokeWidth={2}
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            d="M4.5 12.75l6 6 9-13.5"
-                          />
-                        </svg>
-                        Uploaded successfully
-                      </p>
-                      <p className="truncate text-xs text-slate-500" style={mono}>
-                        id: {uploadResult?.image_id}
-                      </p>
-                    </div>
-                    <button
-                      onClick={reset}
-                      className="ml-auto shrink-0 rounded-full border border-white/10 px-3 py-1.5 text-xs text-slate-300 hover:bg-white/5"
-                    >
-                      New image
-                    </button>
-                  </div>
-
-                  {detection && (
-                    <DetectionOverlay
-                      imageUrl={previewUrl}
-                      objects={detection.objects}
-                      count={detection.count}
-                      label={detection.label}
-                    />
-                  )}
-
-                  {compareResult && secondPreviewUrl && (
-                    <ChangeOverlay
-                      imageUrl={secondPreviewUrl}
-                      regions={compareResult.objects}
-                      changedPct={compareResult.changed_area_percent}
-                      count={compareResult.count}
-                    />
-                  )}
-
-                  {!secondUploadResult && (
-                    <div>
-                      <button
-                        onClick={() => secondInputRef.current?.click()}
-                        disabled={comparing}
-                        className="w-full rounded-full border border-dashed border-white/15 px-4 py-2.5 text-xs text-slate-400 transition hover:border-rose-400/50 hover:text-rose-300 disabled:opacity-50"
-                      >
-                        {comparing ? 'Comparing…' : '+ Compare with another date'}
-                      </button>
-                      <input
-                        ref={secondInputRef}
-                        type="file"
-                        accept="image/*,.tif,.tiff"
-                        className="hidden"
-                        onChange={(e) => handleSecondUpload(e.target.files?.[0])}
-                      />
-                    </div>
-                  )}
-
-                  <ResultsSection
-                    results={queryLog.filter((e) => e.role === 'ai')}
-                    imageName={file?.name || uploadResult?.filename || 'image'}
-                  />
-
-                  <div className="flex h-52 flex-col gap-2 overflow-y-auto rounded-xl border border-white/10 bg-black/30 p-3 backdrop-blur-md">
-                    {queryLog.length === 0 && (
-                      <p className="m-auto max-w-xs text-center text-xs text-slate-500">
-                        Ask something like "Describe this image" or "How many ships are
-                        there?"
-                      </p>
-                    )}
-                    {queryLog.map((entry, i) => (
-                      <motion.div
-                        key={i}
-                        initial={{ opacity: 0, y: 8 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        className={`max-w-[85%] rounded-lg px-3 py-2 text-sm ${
-                          entry.role === 'user'
-                            ? 'ml-auto bg-sky-500/20 text-sky-100'
-                            : 'bg-white/5 text-slate-200'
-                        }`}
-                      >
-                        {entry.text}
-                      </motion.div>
-                    ))}
-                  </div>
-
-                  <form onSubmit={handleAsk} className="flex gap-2">
-                    <input
-                      value={question}
-                      onChange={(e) => setQuestion(e.target.value)}
-                      placeholder="Ask a question about this image…"
-                      className="flex-1 rounded-full border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-slate-100 placeholder:text-slate-500 backdrop-blur-md focus:border-sky-400/60 focus:outline-none"
-                    />
-                    <button
-                      type="submit"
-                      className="rounded-full bg-gradient-to-r from-sky-500 to-amber-400 px-5 py-2.5 text-sm font-medium text-slate-950 shadow-lg shadow-sky-500/20 transition hover:brightness-110"
-                    >
-                      Ask
-                    </button>
-                  </form>
-                </div>
+                <DashboardView
+                  previewUrl={previewUrl}
+                  uploadResult={uploadResult}
+                  detection={detection}
+                  compareResult={compareResult}
+                  secondPreviewUrl={secondPreviewUrl}
+                  secondUploadResult={secondUploadResult}
+                  secondInputRef={secondInputRef}
+                  handleSecondUpload={handleSecondUpload}
+                  comparing={comparing}
+                  queryLog={queryLog}
+                  question={question}
+                  setQuestion={setQuestion}
+                  handleAsk={handleAsk}
+                  reset={reset}
+                  fileName={file?.name || uploadResult?.filename || 'image'}
+                />
               )}
             </motion.div>
           </AnimatePresence>
