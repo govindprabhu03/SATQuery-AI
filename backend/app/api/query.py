@@ -4,11 +4,22 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from app.services.caption_service import generate_caption
+from app.services.grounding_service import detect_objects, extract_target_label
 from app.services.vqa_service import answer_question
 
 UPLOAD_DIR = Path(__file__).resolve().parents[3] / "uploads"
 
 CAPTION_TRIGGERS = ("describe", "what is this", "what's in this", "caption")
+GROUNDING_TRIGGERS = (
+    "how many",
+    "count",
+    "where is",
+    "where are",
+    "locate",
+    "find",
+    "show me",
+    "highlight",
+)
 
 router = APIRouter()
 
@@ -36,6 +47,23 @@ def query(req: QueryRequest):
             "task_type": "caption",
             "objects": [],
             "count": None,
+        }
+
+    if any(trigger in question_lower for trigger in GROUNDING_TRIGGERS):
+        label = extract_target_label(req.question)
+        objects = detect_objects(image_path, label)
+        count = len(objects)
+        plural = "s" if count != 1 else ""
+        answer = (
+            f"I found {count} {label}{plural}."
+            if count
+            else f"I couldn't find any {label} in this image."
+        )
+        return {
+            "answer": answer,
+            "task_type": "grounding",
+            "objects": objects,
+            "count": count,
         }
 
     return {
